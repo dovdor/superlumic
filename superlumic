@@ -18,7 +18,6 @@ printf "${BGreen}         \/      |__|        \/ http://superlumic.com \/       
 setStatusMessage "Checking if we need to ask for a sudo password"
 
 sudo -v
-export ANSIBLE_ASK_SUDO_PASS=True
 
 repo=$1
 username=$USER
@@ -88,43 +87,45 @@ if [[ ! -f "/Library/Developer/CommandLineTools/usr/bin/clang" ]]; then
     install_clt
 fi
 
-# Install Ansible
 if ! exists pip; then
     setStatusMessage "Install PIP"
     sudo easy_install --quiet pip
 fi
+
+superlumicRoot=~/.superlumic
+mkdir -p $superlumicRoot
+export PYTHONUSERBASE=$superlumicRoot
+export PATH=$PATH:$superlumicRoot/bin
+
 if ! exists ansible; then
     setStatusMessage "Install Ansible"
     pip install --upgrade setuptools --user python
-    sudo pip install -q ansible
+    pip install -q ansible --user
 fi
 
 setStatusMessage "Create necessary folders"
 
-sudo mkdir -p /usr/local/superlumic
-sudo mkdir -p /usr/local/superlumic/roles
-sudo chmod -R g+rwx /usr/local
-sudo chgrp -R admin /usr/local
+mkdir -p $superlumicRoot/roles
+superlumicConfig=$superlumicRoot/config
 
-if [ -d "/usr/local/superlumic/config" ]; then
+if [ -d "$superlumicConfig" ]; then
     setStatusMessage "Update your config from git"
-    cd /usr/local/superlumic/config
+    cd $superlumicConfig
     git pull -q
 else
     if [ ! -z "$repo" ]; then
         setStatusMessage "Getting your config from your fork"
-        git clone -q $1 /usr/local/superlumic/config
+        git clone -q $1 $superlumicConfig
     else
-        setStatusMessage "Getting the default config"
-        git clone -q https://github.com/superlumic/superlumic-config.git /usr/local/superlumic/config
+        triggerError "No gitrepo configured/supplied"
     fi
 fi
 
-cd /usr/local/superlumic
+cd $superlumicRoot
 
 setStatusMessage "Create ansible.cfg"
 
-{ echo '[defaults]'; echo 'roles_path=/usr/local/superlumic/roles:/usr/local/superlumic/config/roles'; } > ansible.cfg
+{ echo '[defaults]'; echo "roles_path=$superlumicRoot/roles:$superlumicConfig/config/roles"; } > ansible.cfg
 
 setStatusMessage "Get all the required roles"
 
@@ -134,10 +135,5 @@ if [ -f "config/$username.yml" ]; then
     setStatusMessage "Running the ansible playbook for $username"
     ansible-playbook -i "localhost," config/$username.yml
 else
-    if [ "travis" = "$username" ]; then
-        setStatusMessage "Running the ansible playbook for $username but use roderik.yml as fallback"
-        ansible-playbook -i "localhost," config/roderik.yml
-    else
-        triggerError "No playbook for $username found"
-    fi
+    triggerError "No playbook for $username found"
 fi
